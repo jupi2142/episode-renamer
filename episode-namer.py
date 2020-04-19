@@ -12,18 +12,24 @@ import requests
 from bs4 import BeautifulSoup
 
 
+URL_PATTERNS = (
+    "https://en.wikipedia.org/wiki/list_of_{}_episodes",
+    "https://en.wikipedia.org/wiki/{}",
+)
+EPISODES_TEMPLATE = os.path.join(
+    os.path.dirname(__file__), "episodes", "{}.json"
+)
+STRIPPER_PATTERNS = (re.compile(r"^.*[eE](\d+)"),)
+
+
 def episode_list_table_selector(tag):
-    return (
-        tag.name == "table" and "Title" in tag.text
-    )
+    return tag.name == "table" and "Title" in tag.text
 
 
 def table_to_dict(table):
     row_names = list(
         map(op.attrgetter("text"), table.find("tr").find_all("th"))
     )
-
-    print(row_names)
 
     return [
         {
@@ -43,6 +49,7 @@ def keep(dict_, keys):
 
 
 def episodes_list_to_json(episodes_list_url):
+    print("Fetching: {}".format(episodes_list_url))
     episodes_list_html = requests.get(episodes_list_url).content
     # episodes_list_html = open("/tmp/list.html").read()
     soup = BeautifulSoup(episodes_list_html, features="lxml")
@@ -52,11 +59,9 @@ def episodes_list_to_json(episodes_list_url):
     for season, table in enumerate(episode_list_tables, 1):
         print("Season: ", season)
         for dict_ in table_to_dict(table):
-            print(len(dict_))
             try:
                 dict_["Number"] = int(
-                    (dict_.pop("No. inseason", None) or
-                     dict_.pop('No.', None))
+                    (dict_.pop("No. inseason", None) or dict_.pop("No.", None))
                 )
             except (ValueError, TypeError):
                 import pprint
@@ -89,39 +94,48 @@ def process_doubles(dicts):
             yield dict_
 
 
+def load_episodes(series):
+    series = series.lower().replace(" ", "_")
+    series_json = EPISODES_TEMPLATE.format(series)
+    urls = [url_pattern.format(series) for url_pattern in URL_PATTERNS]
+    try:
+        dicts = json.load(open(series_json))
+    except (ValueError, TypeError, IOError):
+        dicts = episodes_list_to_json(urls[0]) or episodes_list_to_json(
+            urls[1]
+        )
+    dicts = process_doubles(dicts)
+    dicts = simplify_dicts(dicts)
+    json.dump(dicts, open(series_json, "w+"), indent=2)
+    print("Episodes loaded")
+    return dicts
+
+
 @click.command()
-@click.option("-u", "--url")
-@click.option("-s", "--series")
-@click.option("-e", "--episodes", type=click.Path(exists=True))
-# @click.option("-s", "--season", type=click.INT)
-@click.option(
-    "-o", "--output", type=click.Path(exists=False), default="episodes.json"
-)
+@click.argument("series")
 @click.option("--rename", is_flag=True)
 @click.option("--force", is_flag=True)
 @click.option("--check", is_flag=True)
 @click.option("--bulk", is_flag=True)
 # TODO: GROUP, match and download
-def main(**kwargs):
-    try:
-        dicts = json.load(open(kwargs["episodes"]))
-        dicts = process_doubles(dicts)
-        dicts = simplify_dicts(dicts)
-        print("Episodes file loaded")
-    except (ValueError, TypeError):
-        dicts = episodes_list_to_json(kwargs["url"])
-        dicts = process_doubles(dicts)
-        dicts = simplify_dicts(dicts)
-        json.dump(dicts, open(kwargs["output"], "w+"), indent=2)
-        print("Episodes file downloaded")
+def main(series, **kwargs):
+    episodes = load_episodes(series)
+    import ipdb
+    ipdb.set_trace()
+    # Don't show the "renamed" thing for "bulk and/or force"
+    # find a way to strip filenames to just the episode number (pattern lists)
+    # find a way to use it for a whole folder
+    # change how episodes are used as index (^\d+)\D
 
     if not kwargs["rename"]:
         return
 
-    season = int(re.search(r"(\d+)$", os.getcwd()).group(1))
+    season = int(re.search(r"Season 0*(\d+)$", os.getcwd()).group(1))
 
-    dict_for_this_season = {
-        dict_["Number"]: dict_ for dict_ in dicts if dict_["Season"] == season
+    episodes_for_this_season = {
+        episode["Number"]: episode
+        for episode in episodes
+        if episode["Season"] == season
     }
 
     pattern = re.compile(r"^0*(?P<Number>\d+).*\.(?P<extension>[\w]+)")
@@ -131,14 +145,14 @@ def main(**kwargs):
         except AttributeError:
             continue
         try:
-            dict_ = dict_for_this_season[int(number)]
+            episode = episodes_for_this_season[int(number)]
         except KeyError as e:
             print(e)
             continue
         new_file_name = (
             u"{number} - {title}.{extension}".format(
                 number=number.zfill(2),
-                title=dict_["Title"],
+                title=episode["Title"],
                 extension=extension,
             )
             .replace(":", "--")
@@ -151,7 +165,8 @@ def main(**kwargs):
             raw_input("Rename [Y/n] : ").strip() in ["", "y", "Y"]
         ):
             shutil.move(file_name, new_file_name)
-            print("Renamed")
+            if not (kwargs['bulk'] or kwargs['force']):
+                print("Renamed")
         else:
             print("Skipped")
 
