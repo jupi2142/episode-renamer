@@ -94,16 +94,17 @@ def process_doubles(dicts):
             yield dict_
 
 
-def load_episodes(series):
+def load_episodes(series, fallback_url=""):
     series = series.lower().replace(" ", "_")
     series_json = EPISODES_TEMPLATE.format(series)
     urls = [url_pattern.format(series) for url_pattern in URL_PATTERNS]
     try:
         dicts = json.load(open(series_json))
     except (ValueError, TypeError, IOError):
-        dicts = episodes_list_to_json(urls[0]) or episodes_list_to_json(
-            urls[1]
-        )
+        dicts = (episodes_list_to_json(fallback_url) or
+                 episodes_list_to_json(urls[0]) or
+                 episodes_list_to_json(urls[1]))
+
     dicts = process_doubles(dicts)
     dicts = simplify_dicts(dicts)
     json.dump(dicts, open(series_json, "w+"), indent=2)
@@ -125,14 +126,17 @@ def default_season():
 
 @click.command()
 @click.argument("series")
+@click.option("-u", "--url", default="")
+@click.option(
+    "-r",
+    "--rename-type",
+    type=click.Choice(["check", "single", "bulk", "bulk-force"]),
+    default="check",
+)
 @click.option("-s", "--season", default=default_season)
-@click.option('-r', '--rename-type',
-              type=click.Choice(['check', 'single', 'bulk', 'bulk-force']),
-              default="check")
 # TODO: GROUP, match and download
-def main(series, season, rename_type, **kwargs):
-    episodes = load_episodes(series)
-    # Don't show the "renamed" thing for "bulk and/or force"
+def main(series, rename_type, season, **kwargs):
+    episodes = load_episodes(series, kwargs['url'])
     # find a way to strip filenames to just the episode number (pattern lists)
     # find a way to use it for a whole folder
     # change how episodes are used as index (^\d+)
@@ -164,10 +168,14 @@ def main(series, season, rename_type, **kwargs):
             )
             .replace(":", "--")
             .replace("/", "--")
+            .replace(u'"†', "")
         )
-        print("\t->\t".join([file_name, new_file_name]))
+        try:
+            print(u"\t->\t".join([file_name, new_file_name]))
+        except UnicodeDecodeError:
+            continue
 
-        if rename_type == 'single' and prompt():
+        if rename_type == "single" and prompt():
             shutil.move(file_name, new_file_name)
         elif rename_type in ["bulk", "bulk-force"]:
             to_rename.append((file_name, new_file_name))
