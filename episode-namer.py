@@ -17,7 +17,7 @@ URL_PATTERNS = (
     "https://en.wikipedia.org/wiki/{}",
 )
 EPISODES_TEMPLATE = os.path.join(
-    os.path.dirname(__file__), "episodes", "{}.json"
+    os.path.dirname(os.path.realpath(__file__)), "episodes", "{}.json"
 )
 STRIPPER_PATTERNS = (re.compile(r"^.*[eE](\d+)"),)
 
@@ -57,7 +57,7 @@ def episodes_list_to_json(episodes_list_url):
     episode_list_tables = soup.find_all(episode_list_table_selector)
     dicts = []
     for season, table in enumerate(episode_list_tables, 1):
-        print("Season: ", season)
+        print("Season: {}".format(season))
         for dict_ in table_to_dict(table):
             try:
                 dict_["Number"] = int(
@@ -111,26 +111,31 @@ def load_episodes(series):
     return dicts
 
 
+def prompt():
+    return raw_input("Rename? [Y/n] : ").strip() in ["", "y", "Y"]
+
+
+def default_season():
+    try:
+        return int(re.search(r"Season 0*(\d+)$", os.getcwd()).group(1))
+    except AttributeError:
+        # TODO: return list?
+        return None
+
+
 @click.command()
 @click.argument("series")
-@click.option("--rename", is_flag=True)
-@click.option("--force", is_flag=True)
-@click.option("--check", is_flag=True)
-@click.option("--bulk", is_flag=True)
+@click.option("-s", "--season", default=default_season)
+@click.option('-r', '--rename-type',
+              type=click.Choice(['check', 'single', 'bulk', 'bulk-force']),
+              default="check")
 # TODO: GROUP, match and download
-def main(series, **kwargs):
+def main(series, season, rename_type, **kwargs):
     episodes = load_episodes(series)
-    import ipdb
-    ipdb.set_trace()
     # Don't show the "renamed" thing for "bulk and/or force"
     # find a way to strip filenames to just the episode number (pattern lists)
     # find a way to use it for a whole folder
-    # change how episodes are used as index (^\d+)\D
-
-    if not kwargs["rename"]:
-        return
-
-    season = int(re.search(r"Season 0*(\d+)$", os.getcwd()).group(1))
+    # change how episodes are used as index (^\d+)
 
     episodes_for_this_season = {
         episode["Number"]: episode
@@ -139,6 +144,8 @@ def main(series, **kwargs):
     }
 
     pattern = re.compile(r"^0*(?P<Number>\d+).*\.(?P<extension>[\w]+)")
+
+    to_rename = []
     for file_name in os.listdir("."):
         try:
             number, extension = pattern.search(file_name).groups()
@@ -159,16 +166,15 @@ def main(series, **kwargs):
             .replace("/", "--")
         )
         print("\t->\t".join([file_name, new_file_name]))
-        if kwargs["check"]:
-            continue
-        if kwargs["force"] or (
-            raw_input("Rename [Y/n] : ").strip() in ["", "y", "Y"]
-        ):
+
+        if rename_type == 'single' and prompt():
             shutil.move(file_name, new_file_name)
-            if not (kwargs['bulk'] or kwargs['force']):
-                print("Renamed")
-        else:
-            print("Skipped")
+        elif rename_type in ["bulk", "bulk-force"]:
+            to_rename.append((file_name, new_file_name))
+
+    if rename_type == "bulk-force" or (rename_type == "bulk" and prompt()):
+        for file_name, new_file_name in to_rename:
+            shutil.move(file_name, new_file_name)
 
 
 # def match
