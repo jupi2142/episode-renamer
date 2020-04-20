@@ -11,7 +11,6 @@ import click
 import requests
 from bs4 import BeautifulSoup
 
-
 URL_PATTERNS = (
     "https://en.wikipedia.org/wiki/list_of_{}_episodes",
     "https://en.wikipedia.org/wiki/{}",
@@ -22,6 +21,7 @@ EPISODES_TEMPLATE = os.path.join(
 FILENAME_PATTERN = re.compile(
     r"^(?:.*(?:[eE]p?|\d+x))?0*(?P<Number>\d+).*\.(?P<extension>[\w]+)"
 )
+SEASON_PATTERN = re.compile(r"[sS]eason 0*(\d+)$")
 
 
 def episode_list_table_selector(tag):
@@ -52,7 +52,10 @@ def keep(dict_, keys):
 
 def episodes_list_to_json(episodes_list_url):
     print("Fetching: {}".format(episodes_list_url))
-    episodes_list_html = requests.get(episodes_list_url).content
+    try:
+        episodes_list_html = requests.get(episodes_list_url).content
+    except requests.exceptions.ConnectionError:
+        return []
     # episodes_list_html = open("/tmp/list.html").read()
     soup = BeautifulSoup(episodes_list_html, features="lxml")
     [sup.extract() for sup in soup.select("sup.reference")]
@@ -62,9 +65,11 @@ def episodes_list_to_json(episodes_list_url):
         print("Season: {}".format(season))
         for dict_ in table_to_dict(table):
             try:
-                dict_["Number"] = int(dict_.pop("No. inseason", None) or
-                                      dict_.pop("No. inseries", None) or
-                                      dict_.pop("No.", None))
+                dict_["Number"] = int(
+                    dict_.pop("No. inseason", None)
+                    or dict_.pop("No. inseries", None)
+                    or dict_.pop("No.", None)
+                )
             except (ValueError, TypeError):
                 # import pprint
 
@@ -103,9 +108,11 @@ def load_episodes(series, fallback_url=""):
     try:
         dicts = json.load(open(series_json))
     except (ValueError, TypeError, IOError):
-        dicts = (episodes_list_to_json(fallback_url) or
-                 episodes_list_to_json(urls[0]) or
-                 episodes_list_to_json(urls[1]))
+        dicts = (
+            episodes_list_to_json(fallback_url) or
+            episodes_list_to_json(urls[0]) or
+            episodes_list_to_json(urls[1])
+        )
 
     dicts = process_doubles(dicts)
     dicts = simplify_dicts(dicts)
@@ -118,31 +125,19 @@ def prompt():
     return raw_input("Rename? [Y/n] : ").strip() in ["", "y", "Y"]
 
 
-def default_season():
-    try:
-        return int(re.search(r"Season 0*(\d+)$", os.getcwd()).group(1))
-    except AttributeError:
-        # TODO: return list?
-        return None
+def default_seasons():
+    cwd = os.getcwd()
+    season_folders = filter(SEASON_PATTERN.search, [cwd]) + filter(
+        SEASON_PATTERN.search, os.listdir(cwd)
+    )
+
+    return [
+        int(SEASON_PATTERN.search(season_folder).group(1))
+        for season_folder in season_folders
+    ]
 
 
-@click.command()
-@click.argument("series")
-@click.option("-u", "--url", default="https://www.google.com")
-@click.option(
-    "-r",
-    "--rename-type",
-    type=click.Choice(["check", "single", "bulk", "bulk-force"]),
-    default="check",
-)
-@click.option("-s", "--season", default=default_season)
-# TODO: GROUP, match and download
-def main(series, rename_type, season, **kwargs):
-    episodes = load_episodes(series, kwargs['url'])
-    # find a way to strip filenames to just the episode number (pattern lists)
-    # find a way to use it for a whole folder
-    # change how episodes are used as index (^\d+)
-
+def rename_for_season(season, episodes, rename_type, path):
     episodes_for_this_season = {
         episode["Number"]: episode
         for episode in episodes
@@ -151,11 +146,10 @@ def main(series, rename_type, season, **kwargs):
 
     to_rename = []
 
+    file_names = map(op.methodcaller("decode", "utf-8"), os.listdir(path))
+    print("Path: {}".format(path))
 
-    # go deep in the folder and parse the pathes and rename (like find)
-    # use glob instead of os.listdir
-
-    for file_name in map(op.methodcaller('decode', 'utf-8'), os.listdir(".")):
+    for file_name in file_names:
         try:
             number, extension = FILENAME_PATTERN.search(file_name).groups()
         except AttributeError:
@@ -180,6 +174,9 @@ def main(series, rename_type, season, **kwargs):
         except UnicodeDecodeError:
             continue
 
+        file_name = os.path.join(path, file_name)
+        new_file_name = os.path.join(path, new_file_name)
+
         if rename_type == "single" and prompt():
             shutil.move(file_name, new_file_name)
         elif rename_type in ["bulk", "bulk-force"]:
@@ -190,8 +187,23 @@ def main(series, rename_type, season, **kwargs):
             shutil.move(file_name, new_file_name)
 
 
-# def match
-#   strip the starting 0
+@click.command()
+@click.argument("series")
+@click.option("-u", "--url", default="https://www.wikipedia.com")
+@click.option(
+    "-r",
+    "--rename-type",
+    type=click.Choice(["check", "single", "bulk", "bulk-force"]),
+    default="check",
+)
+@click.option("-s", "--seasons", default=default_seasons)
+def main(series, rename_type, seasons, **kwargs):
+    episodes = load_episodes(series, kwargs["url"])
+    parent_folder = SEASON_PATTERN.sub("", os.getcwd())
+    for season in seasons:
+        path = os.path.join(parent_folder, "Season {}".format(season))
+        rename_for_season(season, episodes, rename_type, path)
+
 
 if __name__ == "__main__":
     main()
