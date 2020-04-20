@@ -19,7 +19,9 @@ URL_PATTERNS = (
 EPISODES_TEMPLATE = os.path.join(
     os.path.dirname(os.path.realpath(__file__)), "episodes", "{}.json"
 )
-STRIPPER_PATTERNS = (re.compile(r"^.*[eE](\d+)"),)
+FILENAME_PATTERN = re.compile(
+    r"^(?:.*(?:[eE]p?|\d+x))?0*(?P<Number>\d+).*\.(?P<extension>[\w]+)"
+)
 
 
 def episode_list_table_selector(tag):
@@ -60,13 +62,13 @@ def episodes_list_to_json(episodes_list_url):
         print("Season: {}".format(season))
         for dict_ in table_to_dict(table):
             try:
-                dict_["Number"] = int(
-                    (dict_.pop("No. inseason", None) or dict_.pop("No.", None))
-                )
+                dict_["Number"] = int(dict_.pop("No. inseason", None) or
+                                      dict_.pop("No. inseries", None) or
+                                      dict_.pop("No.", None))
             except (ValueError, TypeError):
-                import pprint
+                # import pprint
 
-                pprint.pprint(dict_)
+                # pprint.pprint(dict_)
                 continue
             dict_["Title"] = dict_.pop("Title").strip('"')
             dict_["Season"] = season
@@ -95,7 +97,7 @@ def process_doubles(dicts):
 
 
 def load_episodes(series, fallback_url=""):
-    series = series.lower().replace(" ", "_")
+    series = series.replace(" ", "_")
     series_json = EPISODES_TEMPLATE.format(series)
     urls = [url_pattern.format(series) for url_pattern in URL_PATTERNS]
     try:
@@ -126,7 +128,7 @@ def default_season():
 
 @click.command()
 @click.argument("series")
-@click.option("-u", "--url", default="")
+@click.option("-u", "--url", default="https://www.google.com")
 @click.option(
     "-r",
     "--rename-type",
@@ -147,12 +149,15 @@ def main(series, rename_type, season, **kwargs):
         if episode["Season"] == season
     }
 
-    pattern = re.compile(r"^0*(?P<Number>\d+).*\.(?P<extension>[\w]+)")
-
     to_rename = []
-    for file_name in os.listdir("."):
+
+
+    # go deep in the folder and parse the pathes and rename (like find)
+    # use glob instead of os.listdir
+
+    for file_name in map(op.methodcaller('decode', 'utf-8'), os.listdir(".")):
         try:
-            number, extension = pattern.search(file_name).groups()
+            number, extension = FILENAME_PATTERN.search(file_name).groups()
         except AttributeError:
             continue
         try:
@@ -164,7 +169,7 @@ def main(series, rename_type, season, **kwargs):
             u"{number} - {title}.{extension}".format(
                 number=number.zfill(2),
                 title=episode["Title"],
-                extension=extension,
+                extension=extension.lower(),
             )
             .replace(":", "--")
             .replace("/", "--")
