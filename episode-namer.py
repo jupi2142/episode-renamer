@@ -56,6 +56,8 @@ def episodes_list_to_json(episodes_list_url):
         episodes_list_html = requests.get(episodes_list_url).content
     except requests.exceptions.ConnectionError:
         return []
+    except requests.exceptions.MissingSchema:
+        return []
     # episodes_list_html = open("/tmp/list.html").read()
     soup = BeautifulSoup(episodes_list_html, features="lxml")
     [sup.extract() for sup in soup.select("sup.reference")]
@@ -189,7 +191,7 @@ def rename_for_season(season, episodes, rename_type, path):
 
 @click.command()
 @click.argument("series")
-@click.option("-u", "--url", default="https://www.wikipedia.com")
+@click.option("-u", "--url", default="")
 @click.option(
     "-r",
     "--rename-type",
