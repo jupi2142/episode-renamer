@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 from misc import simplify_dicts
 
-cache = os.path.join(os.path.dirname(os.path.realpath(__file__)), "omdb")
+cache = os.path.join(os.path.dirname(os.path.realpath(__file__)), "wikipedia")
 requests_cache.install_cache(cache, backend='sqlite')  # , expire_after=300)
 
 URL_PATTERNS = (
