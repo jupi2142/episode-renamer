@@ -133,14 +133,18 @@ def filename_to_genre(filename):
         return "Unknown"
 
 
-requests_cache.install_cache('../omdb', backend='sqlite')
-
-if __name__ == "__main__":
-    # grouper()
-    for filename in os.listdir('.'):
+def group_by_genre(directory='.'):
+    for filename in os.listdir(directory):
         if os.path.isdir(filename):
             continue
         genre = filename_to_genre(filename)
         os.makedirs(genre, exist_ok=True)
         shutil.move(filename, genre)
         print(filename, '|', genre)
+
+
+requests_cache.install_cache('../omdb', backend='sqlite')
+
+if __name__ == "__main__":
+    # grouper()
+    pass
