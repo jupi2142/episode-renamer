@@ -105,7 +105,11 @@ def main(series, rename_type, seasons, source, **kwargs):
     episodes = load_episodes(series, kwargs["url"])
     parent_folder = SEASON_PATTERN.sub("", os.getcwd())
     for season in seasons:
-        path = os.path.join(parent_folder, "Season {}".format(season))
+        try:
+            season_folder = "Season {}".format(int(season))
+        except ValueError:
+            season_folder, season = '.', 1
+        path = os.path.join(parent_folder, season_folder)
         rename_for_season(season, episodes, rename_type, path)
 
 
