@@ -8,9 +8,6 @@ import shutil
 
 import click
 
-# from wikipedia import load_episodes
-from omdb import load_episodes
-
 
 FILENAME_PATTERN = re.compile(
     r"^(?:.*(?:[eE]p?|\d+x))?0*(?P<Number>\d+).*\.(?P<extension>[\w]+)"
@@ -90,6 +87,9 @@ def rename_for_season(season, episodes, rename_type, path):
 @click.command()
 @click.argument("series")
 @click.option("-u", "--url", default="")
+@click.option("--source",
+              type=click.Choice(["omdb", "wikipedia"]),
+              default="omdb")
 @click.option(
     "-r",
     "--rename-type",
@@ -97,7 +97,11 @@ def rename_for_season(season, episodes, rename_type, path):
     default="check",
 )
 @click.option("-s", "--seasons", default=default_seasons)
-def main(series, rename_type, seasons, **kwargs):
+def main(series, rename_type, seasons, source, **kwargs):
+    if source == "omdb":
+        from omdb import load_episodes
+    else:
+        from wikipedia import load_episodes
     episodes = load_episodes(series, kwargs["url"])
     parent_folder = SEASON_PATTERN.sub("", os.getcwd())
     for season in seasons:
