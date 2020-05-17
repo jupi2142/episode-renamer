@@ -42,8 +42,9 @@ def rename_for_season(season, episodes, rename_type, path):
 
     file_names = map(op.methodcaller("decode", "utf-8"), os.listdir(path))
     print("Path: {}".format(path))
+    template = '{:>50}{:^10}{:50}'
 
-    for file_name in file_names:
+    for file_name in sorted(file_names):
         try:
             number, extension = FILENAME_PATTERN.search(file_name).groups()
         except AttributeError:
@@ -51,7 +52,7 @@ def rename_for_season(season, episodes, rename_type, path):
         try:
             episode = episodes_for_this_season[int(number)]
         except KeyError as e:
-            print(e)
+            print(template.format(e, '->', '???'))
             continue
         new_file_name = (
             u"{number} - {title}.{extension}".format(
@@ -64,7 +65,7 @@ def rename_for_season(season, episodes, rename_type, path):
             .replace(u'"†', "")
         )
         try:
-            print(u"\t->\t".join([file_name, new_file_name]))
+            print(template.format(file_name, '->', new_file_name))
         except UnicodeDecodeError:
             continue
 
