@@ -47,7 +47,7 @@ def get_all_episodes(series, *args, **kwargs):
                 [
                     episode
                     for episode in get_season(series, season)
-                    if episode["Released"] != "N/A"
+                    if episode["imdbRating"] != "N/A"
                 ]
             )
         except KeyError:
